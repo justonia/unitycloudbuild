@@ -54,9 +54,33 @@ func init() {
 	}
 }
 
+func Builds_Cancel(context *CloudBuildContext, buildTargetId string, buildNumber int64) error {
+	client := &http.Client{}
+	req := buildRequest(context, "DELETE", fmt.Sprintf("buildtargets/%s/builds/%d", buildTargetId, buildNumber))
+
+	resp := doRequest(context, client, req, nil)
+	if resp.StatusCode == 404 {
+		log.Fatalf("Cannot find %s build #%d", buildTargetId, buildNumber)
+	}
+
+	return nil
+}
+
+func Builds_CancelAll(context *CloudBuildContext) error {
+	client := &http.Client{}
+	req := buildRequest(context, "DELETE", "buildtargets/builds")
+
+	resp := doRequest(context, client, req, nil)
+	if resp.StatusCode == 404 {
+		log.Fatalf("Cannot find resource")
+	}
+
+	return nil
+}
+
 func Builds_List(context *CloudBuildContext, buildTargetId string, filterStatus string, filterPlatform string, limit int64) ([]Build, error) {
 	client := &http.Client{}
-	req := buildRequest(context, fmt.Sprintf("buildtargets/%s/builds", buildTargetId))
+	req := buildRequest(context, "GET", fmt.Sprintf("buildtargets/%s/builds", buildTargetId))
 
 	q := req.URL.Query()
 	if len(filterStatus) != 0 {
@@ -97,7 +121,7 @@ func Builds_List(context *CloudBuildContext, buildTargetId string, filterStatus 
 
 func Builds_Latest(context *CloudBuildContext) ([]BuildTarget, error) {
 	client := &http.Client{}
-	req := buildRequest(context, "buildtargets")
+	req := buildRequest(context, "GET", "buildtargets")
 
 	q := req.URL.Query()
 	q.Add("include_last_success", "true")
@@ -131,7 +155,7 @@ func Builds_Latest(context *CloudBuildContext) ([]BuildTarget, error) {
 
 func Targets_List(context *CloudBuildContext) error {
 	client := &http.Client{}
-	req := buildRequest(context, "buildtargets")
+	req := buildRequest(context, "GET", "buildtargets")
 
 	q := req.URL.Query()
 	q.Add("include", "settings")
@@ -178,7 +202,7 @@ func dumpJson(i interface{}) {
 	fmt.Println(string(b))
 }
 
-func doRequest(context *CloudBuildContext, client *http.Client, req *http.Request, result interface{}) {
+func doRequest(context *CloudBuildContext, client *http.Client, req *http.Request, result interface{}) *http.Response {
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Fatal(err)
@@ -196,18 +220,24 @@ func doRequest(context *CloudBuildContext, client *http.Client, req *http.Reques
 	}
 
 	if resp.StatusCode == 200 {
-		if err = json.Unmarshal(body, &result); err != nil {
-			log.Fatal(err)
+		if result != nil {
+			if err = json.Unmarshal(body, &result); err != nil {
+				log.Fatal(err)
+			}
 		}
+	} else if resp.StatusCode == 204 || resp.StatusCode == 404 {
+		// do nothing
 	} else {
 		var e errorMessage
 		json.Unmarshal(body, &e)
 		log.Fatalf("[HTTP %d] %s", resp.StatusCode, e.Error)
 	}
+
+	return resp
 }
 
-func buildRequest(context *CloudBuildContext, path string) *http.Request {
-	req, err := http.NewRequest("GET", fmt.Sprintf("https://build-api.cloud.unity3d.com/api/v1/orgs/%s/projects/%s/%s", context.OrgId, context.ProjectId, path), nil)
+func buildRequest(context *CloudBuildContext, method string, path string) *http.Request {
+	req, err := http.NewRequest(method, fmt.Sprintf("https://build-api.cloud.unity3d.com/api/v1/orgs/%s/projects/%s/%s", context.OrgId, context.ProjectId, path), nil)
 	if err != nil {
 		log.Fatal(err)
 	}

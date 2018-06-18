@@ -51,7 +51,7 @@ func main() {
 					Usage: "List builds",
 					Flags: []cli.Flag{
 						cli.StringFlag{
-							Name:  "target-id",
+							Name:  "target-id,t",
 							Usage: "Specific target ID or _all for all targets",
 							Value: "_all",
 						},
@@ -81,6 +81,39 @@ func main() {
 					Flags: []cli.Flag{},
 					Action: func(c *cli.Context) error {
 						_, err := cb.Builds_Latest(buildContext(c))
+						return err
+					},
+				},
+				{
+					Name:  "cancel",
+					Usage: "Cancel a build for a build target, or if --all is specified cancel all builds",
+					Flags: []cli.Flag{
+						cli.BoolFlag{
+							Name:  "all",
+							Usage: "If true, cancel all builds",
+						},
+						cli.StringFlag{
+							Name:  "target-id,t",
+							Usage: "Build target ID",
+							Value: "",
+						},
+						cli.Int64Flag{
+							Name:  "build,b",
+							Usage: "Build number for build target",
+							Value: -1,
+						},
+					},
+					Action: func(c *cli.Context) error {
+						var err error
+
+						if c.Bool("all") {
+							err = cb.Builds_CancelAll(buildContext(c))
+						} else {
+							if len(c.String("target-id")) == 0 {
+								log.Fatal("missing target-id")
+							}
+							err = cb.Builds_Cancel(buildContext(c), c.String("target-id"), c.Int64("build"))
+						}
 						return err
 					},
 				},
