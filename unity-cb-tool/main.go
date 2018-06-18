@@ -37,6 +37,10 @@ func main() {
 			Name:  "json",
 			Usage: "If true, output responses in JSON",
 		},
+		cli.BoolFlag{
+			Name:  "verbose",
+			Usage: "If true, output detailed status messages to log",
+		},
 	}
 	app.Commands = []cli.Command{
 		{
@@ -128,5 +132,6 @@ func buildContext(c *cli.Context) *cb.CloudBuildContext {
 		ProjectId:    projectId,
 		ApiKey:       apiKey,
 		OutputFormat: outputFormat,
+		Verbose:      c.GlobalBool("verbose"),
 	}
 }

@@ -23,6 +23,7 @@ type CloudBuildContext struct {
 	ProjectId    string       `json:"projectid"`
 	ApiKey       string       `json:"apikey"`
 	OutputFormat OutputFormat `json:"outputformat"`
+	Verbose      bool
 }
 
 var validPlatforms = []string{
@@ -73,7 +74,7 @@ func Builds_List(context *CloudBuildContext, buildTargetId string, filterStatus 
 	req.URL.RawQuery = q.Encode()
 
 	var entries []Build
-	doRequest(client, req, &entries)
+	doRequest(context, client, req, &entries)
 
 	if limit > 0 {
 		entries = entries[0:min(len(entries), int(limit))]
@@ -103,7 +104,7 @@ func Builds_Latest(context *CloudBuildContext) ([]BuildTarget, error) {
 	req.URL.RawQuery = q.Encode()
 
 	var entries []BuildTarget
-	doRequest(client, req, &entries)
+	doRequest(context, client, req, &entries)
 
 	switch context.OutputFormat {
 	case OutputFormat_None:
@@ -137,7 +138,7 @@ func Targets_List(context *CloudBuildContext) error {
 	req.URL.RawQuery = q.Encode()
 
 	var entries []BuildTarget
-	doRequest(client, req, &entries)
+	doRequest(context, client, req, &entries)
 
 	switch context.OutputFormat {
 	case OutputFormat_None:
@@ -177,8 +178,16 @@ func dumpJson(i interface{}) {
 	fmt.Println(string(b))
 }
 
-func doRequest(client *http.Client, req *http.Request, result interface{}) {
+func doRequest(context *CloudBuildContext, client *http.Client, req *http.Request, result interface{}) {
 	resp, err := client.Do(req)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if context.Verbose {
+		log.Print("X-RateLimit-Remaining:", resp.Header.Get("X-RateLimit-Remaining"))
+	}
+
 	defer resp.Body.Close()
 
 	body, err := ioutil.ReadAll(resp.Body)
@@ -186,8 +195,14 @@ func doRequest(client *http.Client, req *http.Request, result interface{}) {
 		log.Fatal(err)
 	}
 
-	if err = json.Unmarshal(body, &result); err != nil {
-		log.Fatal(err)
+	if resp.StatusCode == 200 {
+		if err = json.Unmarshal(body, &result); err != nil {
+			log.Fatal(err)
+		}
+	} else {
+		var e errorMessage
+		json.Unmarshal(body, &e)
+		log.Fatalf("[HTTP %d] %s", resp.StatusCode, e.Error)
 	}
 }
 
@@ -205,4 +220,8 @@ func min(a, b int) int {
 		return b
 	}
 	return a
+}
+
+type errorMessage struct {
+	Error string `json:"error"`
 }
