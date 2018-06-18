@@ -57,7 +57,7 @@ func main() {
 						},
 						cli.StringFlag{
 							Name:  "filter-platform",
-							Usage: "(ios, android, webgl, osx, win, win64)",
+							Usage: "(ios, android, webgl, osx, win, win64, linux)",
 						},
 						cli.Int64Flag{
 							Name:  "limit,l",
@@ -76,7 +76,8 @@ func main() {
 					Usage: "List latest builds for every build target",
 					Flags: []cli.Flag{},
 					Action: func(c *cli.Context) error {
-						return cb.Builds_Latest(buildContext(c))
+						_, err := cb.Builds_Latest(buildContext(c))
+						return err
 					},
 				},
 			},

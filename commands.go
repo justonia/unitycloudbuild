@@ -6,6 +6,8 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"strings"
+	"time"
 )
 
 type OutputFormat int
@@ -41,6 +43,7 @@ var platformShorthand = map[string]string{
 	"osx":   "standaloneosxuniversal",
 	"win":   "standalonewindows",
 	"win64": "standalonewindows64",
+	"linux": "standalonelinuxuniversal",
 	"":      "",
 }
 
@@ -80,18 +83,9 @@ func Builds_List(context *CloudBuildContext, buildTargetId string, filterStatus 
 	case OutputFormat_None:
 		// do nothing
 	case OutputFormat_Human:
-		for i, build := range entries {
-			fmt.Printf("Target: %s, (Build #%d)\n", build.TargetId, build.Number)
-			fmt.Printf("  Status:   %s\n", build.Status)
-			if len(build.LastBuiltRevision) > 0 {
-				fmt.Printf("  Revision: %s\n", build.LastBuiltRevision)
-			}
-			if build.Links.DownloadPrimary != nil {
-				fmt.Printf("  Download: %s\n", build.Links.DownloadPrimary.Href)
-			}
-			if i+1 != len(entries) {
-				fmt.Println()
-			}
+		for _, build := range entries {
+			outputBuild(build)
+			fmt.Println()
 		}
 	case OutputFormat_JSON:
 		dumpJson(entries)
@@ -100,7 +94,7 @@ func Builds_List(context *CloudBuildContext, buildTargetId string, filterStatus 
 	return entries, nil
 }
 
-func Builds_Latest(context *CloudBuildContext) error {
+func Builds_Latest(context *CloudBuildContext) ([]BuildTarget, error) {
 	client := &http.Client{}
 	req := buildRequest(context, "buildtargets")
 
@@ -111,9 +105,27 @@ func Builds_Latest(context *CloudBuildContext) error {
 	var entries []BuildTarget
 	doRequest(client, req, &entries)
 
-	dumpJson(entries)
+	switch context.OutputFormat {
+	case OutputFormat_None:
+		// do nothing
+	case OutputFormat_Human:
+		for _, target := range entries {
+			if len(target.Builds) > 0 {
+				build := target.Builds[0]
+				outputBuild(build)
+			} else {
+				fmt.Printf("Target: %s\n", target.Id)
+				fmt.Printf("  <No builds successful>")
+			}
 
-	return nil
+			fmt.Println()
+		}
+
+	case OutputFormat_JSON:
+		dumpJson(entries)
+	}
+
+	return entries, nil
 }
 
 func Targets_List(context *CloudBuildContext) error {
@@ -127,9 +139,37 @@ func Targets_List(context *CloudBuildContext) error {
 	var entries []BuildTarget
 	doRequest(client, req, &entries)
 
-	dumpJson(entries)
+	switch context.OutputFormat {
+	case OutputFormat_None:
+		// do nothing
+	case OutputFormat_Human:
+		for _, target := range entries {
+			fmt.Printf("Target: %s\n", target.Name)
+			fmt.Printf("  ID:        %s\n", target.Id)
+			fmt.Printf("  Enabled:   %v\n", target.Enabled)
+			fmt.Printf("  AutoBuild: %v\n", target.Settings.AutoBuild)
+			fmt.Printf("  Branch:    %s\n", target.Settings.Scm.Branch)
+			fmt.Printf("  Unity:     %s\n", strings.Replace(target.Settings.UnityVersion, "_", ".", -1))
+			fmt.Println()
+		}
+
+	case OutputFormat_JSON:
+		dumpJson(entries)
+	}
 
 	return nil
+}
+
+func outputBuild(build Build) {
+	fmt.Printf("Target: %s, (Build #%d)\n", build.TargetId, build.Number)
+	fmt.Printf("  Status:   %s\n", build.Status)
+	fmt.Printf("  Time:     %v\n", time.Second*time.Duration(build.TotalTimeSeconds))
+	if len(build.LastBuiltRevision) > 0 {
+		fmt.Printf("  Revision: %s\n", build.LastBuiltRevision)
+	}
+	if build.Links.DownloadPrimary != nil {
+		fmt.Printf("  Download: %s\n", build.Links.DownloadPrimary.Href)
+	}
 }
 
 func dumpJson(i interface{}) {

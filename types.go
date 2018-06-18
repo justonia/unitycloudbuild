@@ -5,7 +5,7 @@ import "time"
 type BuildTarget struct {
 	Name     string               `json:"name"`
 	Platform string               `json:"platform"`
-	TargetId string               `json:"buildtargetid"`
+	Id       string               `json:"buildtargetid"`
 	Enabled  bool                 `json:"enabled"`
 	Builds   []Build              `json:"builds,omitempty"`
 	Settings *BuildTargetSettings `json:"settings,omitempty"`
