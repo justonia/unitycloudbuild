@@ -8,11 +8,14 @@ import (
 	"github.com/urfave/cli"
 )
 
+const Version string = "0.1.0"
+
 func main() {
 	var apiKey string
 
 	app := cli.NewApp()
 	app.Name = "unity-cb-tool"
+	app.Version = Version
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
 			Name:        "api-key",
