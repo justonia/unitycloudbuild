@@ -1,4 +1,4 @@
-# UnityCloudBuildTool
+# Unity Cloud Build Tools
 CLI tool for interacting with Unity Cloud Build.
 
 By default, commands output human-readable data. If --json is specified as a root flag
