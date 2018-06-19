@@ -1,8 +1,11 @@
 # Unity Cloud Build Tools
-CLI tool for interacting with Unity Cloud Build.
+CLI tool for interacting with Unity Cloud Build. 
 
 This tool is not meant to be an exhaustive wrapper around every single Cloud Build endpoint,
 but instead it is meant to provide a quick way to accomplish common tasks.
+
+See [Releases](https://github.com/justonia/unitycloudbuild/releases) for 64-bit Windows, Mac, and 
+Linux binaries.
 
 ```
 NAME:
