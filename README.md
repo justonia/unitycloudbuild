@@ -32,6 +32,34 @@ GLOBAL OPTIONS:
 one of my projects. The IDs for your project will be whatever you have setup for build
 targets in Cloud Build. The easiest way to find your target IDs is to run `unity-cb-tool targets list`.
 
+## Configuration
+
+This tool requires you to specify your API key, organization ID, and project ID for any of
+the commands to work. 
+
+The easiest way to provide these data are to specify them as environment variables:
+* API Key: `UNITY_API_KEY`
+* Org ID: `UNITY_ORG_ID`
+* Project ID: `UNITY_PROJECT_ID`
+
+Alternatively you could specify each explicitly, e.g.:
+
+```
+unity-cb-tool --api-key MYAPIKEY --org-id my-org-id --project-id MYPROJECTID builds latest
+```
+
+Or via a combination of environment variables and explicit specification:
+
+```
+# Could stick these in your .bashrc or Windows environment
+export UNITY_API_KEY=MYAPIKEY
+export UNITY_ORG_ID=my-org-id
+
+unity-cb-tool --project-id MYPROJECTID builds latest
+```
+
+I will add support for a config file at some indeterminate point in the future. See Issue #2.
+
 ## Commands
 
 ### `targets list`
