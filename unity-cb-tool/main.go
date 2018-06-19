@@ -8,7 +8,7 @@ import (
 	"github.com/urfave/cli"
 )
 
-const Version string = "0.1.0"
+const Version string = "0.2.1"
 
 func main() {
 	var apiKey string
