@@ -6,7 +6,7 @@ but instead it is meant to provide a quick way to accomplish common tasks.
 
 ```
 NAME:
-   unity-cb-tool - A new cli application
+   unity-cb-tool - A tool to interact with Unity Cloud Build
 
 USAGE:
    unity-cb-tool [global options] command [command options] [arguments...]
