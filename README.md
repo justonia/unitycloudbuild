@@ -58,7 +58,7 @@ export UNITY_ORG_ID=my-org-id
 unity-cb-tool --project-id MYPROJECTID builds latest
 ```
 
-I will add support for a config file at some indeterminate point in the future. See [Issue #2](issues/2).
+I will add support for a config file at some indeterminate point in the future. See [Issue #2](https://github.com/justonia/unitycloudbuild/issues/2).
 
 ## Commands
 
