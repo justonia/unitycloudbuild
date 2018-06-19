@@ -1,8 +1,8 @@
 # Unity Cloud Build Tools
 CLI tool for interacting with Unity Cloud Build.
 
-By default, commands output human-readable data. If --json is specified as a root flag
-a more detailed JSON response will be outputted (e.g. `unity-cb-tool --json targets list`).
+This tool is not meant to be an exhaustive wrapper around every single Cloud Build endpoint,
+but instead it is meant to provide a quick way to accomplish common tasks.
 
 ```
 NAME:
@@ -27,6 +27,9 @@ GLOBAL OPTIONS:
    --help, -h          show help
    --version, -v       print the version
 ```
+
+By default, commands output human-readable data. If --json is specified as a root flag
+a more detailed JSON response will be outputted (e.g. `unity-cb-tool --json targets list`).
 
 **NOTE:** In the examples below, the two target IDs 'windows-x64' and 'macos' are from 
 one of my projects. The IDs for your project will be whatever you have setup for build
