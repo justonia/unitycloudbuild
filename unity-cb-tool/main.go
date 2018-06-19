@@ -204,13 +204,19 @@ func main() {
 							Name:  "output,o",
 							Usage: "If set, the build is written to this directory instead of the current directory",
 						},
+						cli.BoolFlag{
+							Name:  "unzip",
+							Usage: "If true, unzip the contents of the build to the output directory. Only works with .zip builds (e.g. not .apk)",
+						},
 					},
 					Action: func(c *cli.Context) error {
 						if len(c.String("target-id")) == 0 {
 							log.Fatal("missing target-id")
 						}
 
-						err := cb.Builds_Download(buildContext(c), c.String("target-id"), c.Int64("build"), c.Bool("latest"), c.String("output"))
+						err := cb.Builds_Download(
+							buildContext(c),
+							c.String("target-id"), c.Int64("build"), c.Bool("latest"), c.String("output"), c.Bool("unzip"))
 						return err
 					},
 				},

@@ -340,7 +340,7 @@ unity-cb-tool builds download -t windows-x64 -b 30 -o Builds/
 ---
 
 Downloading to: Builds/second-wind-interactive-dntm-windows-x64-30.zip
-Download complete: Builds/second-wind-interactive-dntm-windows-x64-30.zip
+Download complete.
 ```
 
 Download the latest build for a target.
@@ -351,6 +351,29 @@ unity-cb-tool builds download -t macos --latest -o Builds/
 
 Latest build is #22.
 Downloading to: Builds/second-wind-interactive-dntm-macos-22.zip
-Download complete: Builds/second-wind-interactive-dntm-macos-22.zip
+Download complete.
+```
+
+Download the latest build for a target and unzip its contents.
+```
+unity-cb-tool builds download -t windows-x64 --latest -o Builds/ --unzip
+
+---
+
+Latest build is #30.
+Downloading to: /tmp/second-wind-interactive-dntm-windows-x64-30.zip124929410
+Download complete.
+Unzipping content to: Builds/
+Writing: Builds/DNTM.exe
+Writing: Builds/DNTM_Data/app.info
+Writing: Builds/DNTM_Data/boot.config
+Writing: Builds/DNTM_Data/globalgamemanagers
+Writing: Builds/DNTM_Data/globalgamemanagers.assets
+Writing: Builds/DNTM_Data/level0
+Writing: Builds/DNTM_Data/level1
+Writing: Builds/DNTM_Data/level2
+Writing: Builds/DNTM_Data/level3
+
+(truncated)
 ```
 

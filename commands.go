@@ -1,6 +1,7 @@
 package unitycloudbuild
 
 import (
+	"archive/zip"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -63,10 +64,11 @@ func init() {
 	}
 }
 
-func Builds_Download(context *CloudBuildContext, buildTargetId string, buildNumber int64, latest bool, outputDir string) error {
+func Builds_Download(context *CloudBuildContext, buildTargetId string, buildNumber int64, latest bool, outputDir string, unzip bool) error {
 	quietContext := *context
 	quietContext.OutputFormat = OutputFormat_None
 
+	// Find the build information
 	var build *Build
 	var err error
 
@@ -98,15 +100,160 @@ func Builds_Download(context *CloudBuildContext, buildTargetId string, buildNumb
 		return fmt.Errorf("Cannot download build, status is '%s'", build.Status)
 	} else if build.Links.DownloadPrimary == nil {
 		return fmt.Errorf("Missing download link for build")
+	} else if unzip && strings.ToLower(build.Links.DownloadPrimary.Meta.Type) != "zip" {
+		return fmt.Errorf("Cannot unzip build, filetype is %s", strings.ToLower(build.Links.DownloadPrimary.Meta.Type))
 	}
 
+	// Check output dir status
+	if len(outputDir) == 0 {
+		outputDir = "."
+	}
+
+	outputDirInfo, err := os.Stat(outputDir)
+	if os.IsNotExist(err) || !outputDirInfo.IsDir() {
+		return fmt.Errorf("Error: %s is not a directory or does not exist", outputDir)
+	} else if err != nil {
+		return fmt.Errorf("Error stat'ing directory: %v", err)
+	}
+
+	// Determine output location
 	_url, err := url.Parse(build.Links.DownloadPrimary.Href)
 	if err != nil {
 		return err
 	}
 
-	_, err = grabHttpFile(context, _url, outputDir)
+	filename := path.Base(_url.Path)
+	if _, params, err := mime.ParseMediaType(_url.Query().Get("response-content-disposition")); err == nil {
+		filename = params["filename"]
+	}
+
+	var file *os.File
+	if !unzip {
+		if context.Verbose {
+			log.Printf("Using filename: %s\n", filename)
+		}
+
+		filename = filepath.Join(outputDir, filename)
+		file, err = os.Create(filename)
+		if err != nil {
+			return err
+		}
+	} else {
+		file, err = ioutil.TempFile("", filename)
+		if err != nil {
+			return err
+		}
+	}
+
+	defer file.Close()
+	if context.OutputFormat == OutputFormat_Human {
+		fmt.Printf("Downloading to: %s\n", file.Name())
+	}
+
+	// Download build
+	err = grabHttpFile(context, _url, file)
 	if err != nil {
+		// Deferring to have it happen after file.Close()
+		defer func() {
+			os.Remove(file.Name())
+		}()
+		return err
+	}
+
+	if context.OutputFormat == OutputFormat_Human {
+		fmt.Printf("Download complete.\n")
+	}
+
+	if !unzip {
+		return nil
+	}
+
+	// Handle unzipping, need to abstract out at some point...
+	defer func() {
+		os.Remove(file.Name())
+	}()
+
+	if err := file.Sync(); err != nil {
+		return err
+	}
+
+	zipReader, err := zip.OpenReader(file.Name())
+	if err != nil {
+		return err
+	}
+
+	if context.OutputFormat == OutputFormat_Human {
+		fmt.Printf("Unzipping content to: %s\n", outputDir)
+	}
+
+	for _, zippedFile := range zipReader.File {
+		filePath := filepath.Join(outputDir, filepath.FromSlash(zippedFile.Name))
+
+		if zippedFile.FileInfo().IsDir() {
+			if err := os.MkdirAll(filePath, zippedFile.Mode()); err != nil {
+				return err
+			}
+			continue
+		} else {
+			dir, _ := filepath.Split(filePath)
+			if err := os.MkdirAll(dir, outputDirInfo.Mode()); err != nil {
+				return err
+			}
+		}
+
+		if context.OutputFormat == OutputFormat_Human {
+			fmt.Println("Writing:", filePath)
+		}
+
+		fileReader, err := zippedFile.Open()
+		if err != nil {
+			return err
+		}
+
+		if err = func() error {
+			defer fileReader.Close()
+
+			targetFile, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, zippedFile.Mode())
+			if err != nil {
+				return err
+			}
+
+			defer targetFile.Close()
+
+			if _, err := io.Copy(targetFile, fileReader); err != nil {
+				return err
+			}
+			return nil
+		}(); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func grabHttpFile(context *CloudBuildContext, _url *url.URL, dst io.Writer) error {
+	if context.Verbose {
+		log.Println(_url)
+	}
+
+	resp, err := http.Get(_url.String())
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if context.Verbose {
+		for name, val := range resp.Header {
+			log.Printf("Response header: %s=%s", name, val)
+		}
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("Could not download, got status code: %d", resp.StatusCode)
+	}
+
+	if _, err = io.Copy(dst, resp.Body); err != nil {
 		return err
 	}
 
@@ -461,72 +608,6 @@ func buildRequest(context *CloudBuildContext, method string, path string, body i
 	}
 
 	return req
-}
-
-func grabHttpFile(context *CloudBuildContext, _url *url.URL, outputDir string) (string, error) {
-	if len(outputDir) == 0 {
-		outputDir = "."
-	}
-
-	if context.Verbose {
-		log.Println(_url)
-	}
-
-	if info, err := os.Stat(outputDir); os.IsNotExist(err) || !info.IsDir() {
-		return "", fmt.Errorf("Error: %s is not a directory or does not exist", outputDir)
-	} else if err != nil {
-		return "", fmt.Errorf("Error stat'ing directory: %v", err)
-	}
-
-	filename := path.Base(_url.Path)
-	if _, params, err := mime.ParseMediaType(_url.Query().Get("response-content-disposition")); err == nil {
-		filename = params["filename"]
-	}
-
-	if context.Verbose {
-		log.Printf("Using filename: %s\n", filename)
-	}
-
-	filename = filepath.Join(outputDir, filename)
-	file, err := os.Create(filename)
-	if err != nil {
-		return "", err
-	}
-	defer file.Close()
-
-	if context.OutputFormat == OutputFormat_Human {
-		fmt.Printf("Downloading to: %s\n", filename)
-	}
-
-	resp, err := http.Get(_url.String())
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	if context.Verbose {
-		for name, val := range resp.Header {
-			log.Printf("Response header: %s=%s", name, val)
-		}
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("Could not download, got status code: %d", resp.StatusCode)
-	}
-
-	if _, err = io.Copy(file, resp.Body); err != nil {
-		// deferring so it happens after the Close() call.
-		defer func() {
-			os.Remove(filename)
-		}()
-		return "", err
-	}
-
-	if context.OutputFormat == OutputFormat_Human {
-		fmt.Printf("Download complete: %s\n", filename)
-	}
-
-	return filename, nil
 }
 
 func min(a, b int) int {

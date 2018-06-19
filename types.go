@@ -59,9 +59,11 @@ type Links struct {
 }
 
 type Link struct {
-	Method string                 `json:"method"`
-	Href   string                 `json:"href"`
-	Meta   map[string]interface{} `json:"meta,omitempty"`
+	Method string `json:"method"`
+	Href   string `json:"href"`
+	Meta   struct {
+		Type string `json:"type,omitempty"`
+	} `json:"meta"`
 }
 
 type File struct {
