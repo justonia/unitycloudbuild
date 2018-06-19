@@ -28,6 +28,7 @@ type Build struct {
 	TargetId          string        `json:"buildTargetId"`
 	TargetName        string        `json:"buildTargetName"`
 	GUID              string        `json:"buildGUID,omitempty"`
+	Created           time.Time     `json:"created"`
 	Status            string        `json:"buildStatus"`
 	Finished          time.Time     `json:"finished"`
 	Platform          string        `json:"platform"`
@@ -38,6 +39,12 @@ type Build struct {
 	LastBuiltRevision string        `json:"lastBuiltRevision,omitempty"`
 	Changesets        []interface{} `json:"changeset,omitempty"`
 	UnityVersion      string        `json:"unityVersion"`
+}
+
+type BuildAttempt struct {
+	Build
+	FailureDetails interface{} `json:"failureDetails,omitempty"`
+	Error          string      `json:"error,omitempty"`
 }
 
 type Changeset struct {

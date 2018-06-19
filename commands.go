@@ -1,11 +1,14 @@
 package unitycloudbuild
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 )
@@ -54,9 +57,74 @@ func init() {
 	}
 }
 
+func Builds_Start(context *CloudBuildContext, buildTargetId string, clean bool) (*BuildAttempt, error) {
+	client := &http.Client{}
+	req := buildRequest(
+		context, "POST", fmt.Sprintf("buildtargets/%s/builds", buildTargetId),
+		struct {
+			clean bool
+		}{clean: clean})
+
+	var entries []BuildAttempt
+	doRequest(context, client, req, &entries)
+
+	if entries == nil || len(entries) == 0 {
+		return nil, fmt.Errorf("No builds started...")
+	} else if len(entries[0].Error) > 0 {
+		return nil, fmt.Errorf(entries[0].Error)
+	}
+
+	switch context.OutputFormat {
+	case OutputFormat_None:
+		// do nothing
+	case OutputFormat_Human:
+		outputBuild(entries[0].Build)
+		fmt.Println()
+	case OutputFormat_JSON:
+		dumpJson(entries[0])
+	}
+
+	return &entries[0], nil
+}
+
+func Builds_StartAll(context *CloudBuildContext, clean bool) ([]BuildAttempt, error) {
+	client := &http.Client{}
+	req := buildRequest(
+		context, "POST", "buildtargets/_all/builds",
+		struct {
+			clean bool
+		}{clean: clean})
+
+	var entries []BuildAttempt
+	doRequest(context, client, req, &entries)
+
+	if entries == nil || len(entries) == 0 {
+		return nil, fmt.Errorf("No builds started...")
+	}
+
+	switch context.OutputFormat {
+	case OutputFormat_None:
+		// do nothing
+	case OutputFormat_Human:
+		for _, buildAttempt := range entries {
+			if len(buildAttempt.Error) > 0 {
+				fmt.Printf("Target: %s\n", buildAttempt.Build.TargetId)
+				fmt.Printf("  Error: %s\n", buildAttempt.Error)
+			} else {
+				outputBuild(buildAttempt.Build)
+			}
+			fmt.Println()
+		}
+	case OutputFormat_JSON:
+		dumpJson(entries[0])
+	}
+
+	return entries, nil
+}
+
 func Builds_Cancel(context *CloudBuildContext, buildTargetId string, buildNumber int64) error {
 	client := &http.Client{}
-	req := buildRequest(context, "DELETE", fmt.Sprintf("buildtargets/%s/builds/%d", buildTargetId, buildNumber))
+	req := buildRequest(context, "DELETE", fmt.Sprintf("buildtargets/%s/builds/%d", buildTargetId, buildNumber), nil)
 
 	resp := doRequest(context, client, req, nil)
 	if resp.StatusCode == 404 {
@@ -96,7 +164,7 @@ func Builds_CancelAll(context *CloudBuildContext, buildTargetId string) error {
 			continue
 		}
 
-		req := buildRequest(context, "DELETE", fmt.Sprintf("buildtargets/%s/builds", target.Id))
+		req := buildRequest(context, "DELETE", fmt.Sprintf("buildtargets/%s/builds", target.Id), nil)
 		doRequest(context, client, req, nil)
 	}
 
@@ -105,7 +173,7 @@ func Builds_CancelAll(context *CloudBuildContext, buildTargetId string) error {
 
 func Builds_List(context *CloudBuildContext, buildTargetId string, filterStatus string, filterPlatform string, limit int64) ([]Build, error) {
 	client := &http.Client{}
-	req := buildRequest(context, "GET", fmt.Sprintf("buildtargets/%s/builds", buildTargetId))
+	req := buildRequest(context, "GET", fmt.Sprintf("buildtargets/%s/builds", buildTargetId), nil)
 
 	q := req.URL.Query()
 	if len(filterStatus) != 0 {
@@ -144,43 +212,76 @@ func Builds_List(context *CloudBuildContext, buildTargetId string, filterStatus 
 	return entries, nil
 }
 
-func Builds_Latest(context *CloudBuildContext) ([]BuildTarget, error) {
+func Builds_Latest(context *CloudBuildContext, onlySuccess bool) (map[string]*Build, error) {
 	client := &http.Client{}
-	req := buildRequest(context, "GET", "buildtargets")
+	builds := make(map[string]*Build)
+
+	// Get all targets along with builds
+	req := buildRequest(context, "GET", "buildtargets", nil)
 
 	q := req.URL.Query()
 	q.Add("include_last_success", "true")
 	req.URL.RawQuery = q.Encode()
 
-	var entries []BuildTarget
-	doRequest(context, client, req, &entries)
+	var targets []BuildTarget
+	doRequest(context, client, req, &targets)
+
+	for _, target := range targets {
+		if len(target.Builds) > 0 {
+			builds[target.Id] = &target.Builds[0]
+		} else {
+			builds[target.Id] = nil
+		}
+	}
+
+	if !onlySuccess {
+		quietContext := *context
+		quietContext.OutputFormat = OutputFormat_None
+
+		for _, target := range targets {
+			targetBuilds, err := Builds_List(&quietContext, target.Id, "", "", 1)
+			if err != nil {
+				log.Fatal(err)
+			}
+			if len(targetBuilds) > 0 {
+				builds[target.Id] = &targetBuilds[0]
+			}
+		}
+	}
 
 	switch context.OutputFormat {
 	case OutputFormat_None:
 		// do nothing
 	case OutputFormat_Human:
-		for _, target := range entries {
-			if len(target.Builds) > 0 {
-				build := target.Builds[0]
-				outputBuild(build)
+		ids := make([]string, 0, len(builds))
+		for id := range builds {
+			ids = append(ids, id)
+		}
+
+		sort.Strings(ids)
+
+		for _, targetId := range ids {
+			build := builds[targetId]
+			if build != nil {
+				outputBuild(*build)
 			} else {
-				fmt.Printf("Target: %s\n", target.Id)
-				fmt.Printf("  <No builds successful>")
+				fmt.Printf("Target: %s\n", targetId)
+				fmt.Printf("  <No builds successful>\n")
 			}
 
 			fmt.Println()
 		}
 
 	case OutputFormat_JSON:
-		dumpJson(entries)
+		dumpJson(builds)
 	}
 
-	return entries, nil
+	return builds, nil
 }
 
 func Targets_List(context *CloudBuildContext) ([]BuildTarget, error) {
 	client := &http.Client{}
-	req := buildRequest(context, "GET", "buildtargets")
+	req := buildRequest(context, "GET", "buildtargets", nil)
 
 	q := req.URL.Query()
 	q.Add("include", "settings")
@@ -212,6 +313,7 @@ func Targets_List(context *CloudBuildContext) ([]BuildTarget, error) {
 
 func outputBuild(build Build) {
 	fmt.Printf("Target: %s, (Build #%d)\n", build.TargetId, build.Number)
+	fmt.Printf("  Created:  %v\n", build.Created)
 	fmt.Printf("  Status:   %s\n", build.Status)
 	fmt.Printf("  Time:     %v\n", time.Second*time.Duration(build.TotalTimeSeconds))
 	if len(build.LastBuiltRevision) > 0 {
@@ -244,7 +346,7 @@ func doRequest(context *CloudBuildContext, client *http.Client, req *http.Reques
 		log.Fatal(err)
 	}
 
-	if resp.StatusCode == 200 {
+	if resp.StatusCode == 200 || resp.StatusCode == 202 {
 		if result != nil {
 			if err = json.Unmarshal(body, &result); err != nil {
 				log.Fatal(err)
@@ -261,12 +363,27 @@ func doRequest(context *CloudBuildContext, client *http.Client, req *http.Reques
 	return resp
 }
 
-func buildRequest(context *CloudBuildContext, method string, path string) *http.Request {
-	req, err := http.NewRequest(method, fmt.Sprintf("https://build-api.cloud.unity3d.com/api/v1/orgs/%s/projects/%s/%s", context.OrgId, context.ProjectId, path), nil)
+func buildRequest(context *CloudBuildContext, method string, path string, body interface{}) *http.Request {
+	var postData io.Reader
+	if body != nil {
+		d, err := json.Marshal(body)
+		if err != nil {
+			log.Fatal(err)
+		}
+		postData = bytes.NewBuffer(d)
+	}
+
+	req, err := http.NewRequest(method, fmt.Sprintf("https://build-api.cloud.unity3d.com/api/v1/orgs/%s/projects/%s/%s", context.OrgId, context.ProjectId, path), postData)
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	req.SetBasicAuth("", context.ApiKey)
+
+	if postData != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
 	return req
 }
 

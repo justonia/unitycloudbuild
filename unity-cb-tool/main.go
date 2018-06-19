@@ -78,9 +78,14 @@ func main() {
 				{
 					Name:  "latest",
 					Usage: "List latest builds for every build target",
-					Flags: []cli.Flag{},
+					Flags: []cli.Flag{
+						cli.BoolFlag{
+							Name:  "success",
+							Usage: "If true, only show latest successful build",
+						},
+					},
 					Action: func(c *cli.Context) error {
-						_, err := cb.Builds_Latest(buildContext(c))
+						_, err := cb.Builds_Latest(buildContext(c), c.Bool("success"))
 						return err
 					},
 				},
@@ -113,6 +118,38 @@ func main() {
 								log.Fatal("missing target-id")
 							}
 							err = cb.Builds_Cancel(buildContext(c), c.String("target-id"), c.Int64("build"))
+						}
+						return err
+					},
+				},
+				{
+					Name:  "start",
+					Usage: "Start a build for a build target, or if --all is specified start builds for all enabled targets",
+					Flags: []cli.Flag{
+						cli.BoolFlag{
+							Name:  "all",
+							Usage: "If true, start builds on all enabled targets",
+						},
+						cli.BoolFlag{
+							Name:  "clean",
+							Usage: "Force a clean build.",
+						},
+						cli.StringFlag{
+							Name:  "target-id,t",
+							Usage: "Build target ID",
+							Value: "",
+						},
+					},
+					Action: func(c *cli.Context) error {
+						var err error
+
+						if c.Bool("all") {
+							_, err = cb.Builds_StartAll(buildContext(c), c.Bool("clean"))
+						} else {
+							if len(c.String("target-id")) == 0 {
+								log.Fatal("missing target-id")
+							}
+							_, err = cb.Builds_Start(buildContext(c), c.String("target-id"), c.Bool("clean"))
 						}
 						return err
 					},

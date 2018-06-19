@@ -28,7 +28,43 @@ GLOBAL OPTIONS:
    --version, -v       print the version
 ```
 
+**NOTE:** In the examples below, the two target IDs 'windows-x64' and 'macos' are from 
+one of my projects. The IDs for your project will be whatever you have setup for build
+targets in Cloud Build. The easiest way to find your target IDs is to run `unity-cb-tool targets list`.
+
 ## Commands
+
+### `targets list`
+
+```
+NAME:
+   unity-cb-tool targets list - List all build targets
+
+USAGE:
+   unity-cb-tool targets list [arguments...]
+```
+
+#### Example
+
+```
+unity-cb-tool targets list
+
+---
+
+Target: Windows x64
+  ID:        windows-x64
+  Enabled:   true
+  AutoBuild: true
+  Branch:    release
+  Unity:     2018.1.2f1
+
+Target: MacOS
+  ID:        macos
+  Enabled:   true
+  AutoBuild: true
+  Branch:    release
+  Unity:     2018.1.2f1
+```
 
 ### `builds list`
 
@@ -74,12 +110,37 @@ NAME:
    unity-cb-tool builds latest - List latest builds for every build target
 
 USAGE:
-   unity-cb-tool builds latest [arguments...]
+   unity-cb-tool builds latest [command options] [arguments...]
+
+OPTIONS:
+   --success  If true, only show latest successful build
 ```
 
-#### Example
+#### Examples
+
+Get all the latest builds of any status.
 ```
 unity-cb-tool builds latest
+
+---
+
+Target: macos, (Build #25)
+  Created:  2018-06-19 18:52:56.402 +0000 UTC
+  Status:   canceled
+  Time:     17s
+
+Target: Windows x64 (id=windows-x64)
+  Build:    #16
+  Status:   success
+  Time:     17m13s
+  Revision: 9102ca18b98706193a6b9d92d51cab8928bd7b97
+  Download: https://unitycloud-build-user-svc-live-build.s3.amazonaws.com/...
+
+```
+
+Get all the latest successful builds.
+```
+unity-cb-tool builds latest --success
 
 ---
 
@@ -96,6 +157,55 @@ Target: MacOS (id=macos)
   Time:     18m3s
   Revision: 9102ca18b98706193a6b9d92d51cab8928bd7b97
   Download: https://unitycloud-build-user-svc-live-build.s3.amazonaws.com/...
+```
+
+### `builds start`
+
+```
+NAME:
+   unity-cb-tool builds start - Start a build for a build target, or if --all is specified start builds for all enabled targets
+
+USAGE:
+   unity-cb-tool builds start [command options] [arguments...]
+
+OPTIONS:
+   --all                        If true, start builds on all enabled targets
+   --clean                      Force a clean build.
+   --target-id value, -t value  Build target ID
+   
+```
+
+#### Examples
+
+Start a build for a specific target.
+```
+unity-cb-tool builds start -t windows-x64
+
+---
+
+Target: windows-x64, (Build #33)
+  Created:  2018-06-19 18:52:02.951 +0000 UTC
+  Status:   queued
+  Time:     0s
+
+```
+
+Start a build for all enabled targets.
+```
+unity-cb-tool builds start --all
+
+---
+
+Target: windows-x64, (Build #34)
+  Created:  2018-06-19 18:52:56.397 +0000 UTC
+  Status:   queued
+  Time:     0s
+
+Target: macos, (Build #25)
+  Created:  2018-06-19 18:52:56.402 +0000 UTC
+  Status:   queued
+  Time:     0s
+
 ```
 
 ### `builds cancel`
@@ -143,34 +253,4 @@ unity-cb-tool builds cancel --all
 ```
 
 
-### `targets list`
 
-```
-NAME:
-   unity-cb-tool targets list - List all build targets
-
-USAGE:
-   unity-cb-tool targets list [arguments...]
-```
-
-#### Example
-
-```
-unity-cb-tool targets list
-
----
-
-Target: Windows x64
-  ID:        windows-x64
-  Enabled:   true
-  AutoBuild: true
-  Branch:    release
-  Unity:     2018.1.2f1
-
-Target: MacOS
-  ID:        macos
-  Enabled:   true
-  AutoBuild: true
-  Branch:    release
-  Unity:     2018.1.2f1
-```
