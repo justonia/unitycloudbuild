@@ -107,7 +107,7 @@ func main() {
 						var err error
 
 						if c.Bool("all") {
-							err = cb.Builds_CancelAll(buildContext(c))
+							err = cb.Builds_CancelAll(buildContext(c), c.String("target-id"))
 						} else {
 							if len(c.String("target-id")) == 0 {
 								log.Fatal("missing target-id")
@@ -127,7 +127,8 @@ func main() {
 					Usage: "List all build targets",
 					Flags: []cli.Flag{},
 					Action: func(c *cli.Context) error {
-						return cb.Targets_List(buildContext(c))
+						_, err := cb.Targets_List(buildContext(c))
+						return err
 					},
 				},
 			},

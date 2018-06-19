@@ -98,6 +98,51 @@ Target: MacOS (id=macos)
   Download: https://unitycloud-build-user-svc-live-build.s3.amazonaws.com/...
 ```
 
+### `builds cancel`
+
+```
+NAME:
+   unity-cb-tool builds cancel - Cancel a build for a build target, or if --all is specified cancel all builds
+
+USAGE:
+   unity-cb-tool builds cancel [command options] [arguments...]
+
+OPTIONS:
+   --all                        If true, cancel all builds
+   --target-id value, -t value  Build target ID
+   --build value, -b value      Build number for build target (default: -1)
+```
+
+#### Examples
+
+Cancel a specific build.
+```
+unity-cb-tool builds cancel -t windows-x64 -b 17
+
+---
+
+(no output)
+```
+
+Cancel all builds for a specific target.
+```
+unity-cb-tool builds cancel -t windows-x64 --all
+
+---
+
+(no output)
+```
+
+Cancel all builds for all targets.
+```
+unity-cb-tool builds cancel --all
+
+---
+
+(no output)
+```
+
+
 ### `targets list`
 
 ```

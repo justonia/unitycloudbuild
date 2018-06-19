@@ -66,13 +66,38 @@ func Builds_Cancel(context *CloudBuildContext, buildTargetId string, buildNumber
 	return nil
 }
 
-func Builds_CancelAll(context *CloudBuildContext) error {
+func Builds_CancelAll(context *CloudBuildContext, buildTargetId string) error {
+	/* Right now this correct way of canceling all builds is bugged on the Cloud Build
+	   side and returning an HTTP 500 error.
+
+	   So we need to do things the hard way and get all targets, and then for each target
+	   call the cancel builds endpoint.
+
 	client := &http.Client{}
-	req := buildRequest(context, "DELETE", "buildtargets/builds")
+	req := buildRequest(context, "DELETE", "buildtargets/_all/builds")
 
 	resp := doRequest(context, client, req, nil)
 	if resp.StatusCode == 404 {
 		log.Fatalf("Cannot find resource")
+	}
+	*/
+
+	targetsContext := *context
+	targetsContext.OutputFormat = OutputFormat_None
+	targets, err := Targets_List(&targetsContext)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	client := &http.Client{}
+	for _, target := range targets {
+		// If a specific target has been specified, ignore other targets.
+		if len(buildTargetId) > 0 && buildTargetId != target.Id {
+			continue
+		}
+
+		req := buildRequest(context, "DELETE", fmt.Sprintf("buildtargets/%s/builds", target.Id))
+		doRequest(context, client, req, nil)
 	}
 
 	return nil
@@ -153,7 +178,7 @@ func Builds_Latest(context *CloudBuildContext) ([]BuildTarget, error) {
 	return entries, nil
 }
 
-func Targets_List(context *CloudBuildContext) error {
+func Targets_List(context *CloudBuildContext) ([]BuildTarget, error) {
 	client := &http.Client{}
 	req := buildRequest(context, "GET", "buildtargets")
 
@@ -182,7 +207,7 @@ func Targets_List(context *CloudBuildContext) error {
 		dumpJson(entries)
 	}
 
-	return nil
+	return entries, nil
 }
 
 func outputBuild(build Build) {
