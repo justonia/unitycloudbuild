@@ -16,6 +16,7 @@ func main() {
 	app := cli.NewApp()
 	app.Name = "unity-cb-tool"
 	app.Version = Version
+	app.Usage = "A tool to interact with Unity Cloud Build"
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
 			Name:        "api-key",
