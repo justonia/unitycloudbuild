@@ -190,6 +190,37 @@ Target: MacOS (id=macos)
   Download: https://unitycloud-build-user-svc-live-build.s3.amazonaws.com/...
 ```
 
+### `builds status`
+
+```
+NAME:
+   unity-cb-tool builds status - Retrieve status of a build
+
+USAGE:
+   unity-cb-tool builds status [command options] [arguments...]
+
+OPTIONS:
+   --target-id value, -t value  Build target ID
+   --build value, -b value      Build number for build target (default: -1)
+   
+```
+
+#### Examples
+
+```
+unity-cb-tool builds status -t windows-x64 -b 16
+
+---
+
+Target: Windows x64 (id=windows-x64)
+  Build:    #16
+  Status:   success
+  Time:     17m13s
+  Revision: 9102ca18b98706193a6b9d92d51cab8928bd7b97
+  Download: https://unitycloud-build-user-svc-live-build.s3.amazonaws.com/...
+
+```
+
 ### `builds start`
 
 ```
@@ -283,5 +314,43 @@ unity-cb-tool builds cancel --all
 (no output)
 ```
 
+### `builds download`
 
+```
+NAME:
+   unity-cb-tool builds download - Download builds
+
+USAGE:
+   unity-cb-tool builds download [command options] [arguments...]
+
+OPTIONS:
+   --target-id value, -t value  Build target ID
+   --build value, -b value      Build number for build target (default: -1)
+   --latest                     If true, download the latest successful build
+   --output value, -o value     If set, the build is written to this directory instead
+   
+```
+
+#### Examples
+
+Download a specific build.
+```
+unity-cb-tool builds download -t windows-x64 -b 30 -o Builds/
+
+---
+
+Downloading to: Builds/second-wind-interactive-dntm-windows-x64-30.zip
+Download complete: Builds/second-wind-interactive-dntm-windows-x64-30.zip
+```
+
+Download the latest build for a target.
+```
+unity-cb-tool builds download -t macos --latest -o Builds/
+
+---
+
+Latest build is #22.
+Downloading to: Builds/second-wind-interactive-dntm-macos-22.zip
+Download complete: Builds/second-wind-interactive-dntm-macos-22.zip
+```
 

@@ -7,10 +7,16 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"mime"
 	"net/http"
+	"net/url"
+	"os"
+	"path"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
+	//"github.com/cavaliercoder/grab"
 )
 
 type OutputFormat int
@@ -55,6 +61,56 @@ func init() {
 	for _, p := range validPlatforms {
 		platformShorthand[p] = p
 	}
+}
+
+func Builds_Download(context *CloudBuildContext, buildTargetId string, buildNumber int64, latest bool, outputDir string) error {
+	quietContext := *context
+	quietContext.OutputFormat = OutputFormat_None
+
+	var build *Build
+	var err error
+
+	if !latest {
+		build, err = Builds_Status(&quietContext, buildTargetId, buildNumber)
+		if err != nil {
+			log.Fatal(err)
+		}
+	} else {
+		targetBuilds, err := Builds_List(&quietContext, buildTargetId, "success", "", 1)
+		if err != nil {
+			log.Fatal(err)
+		} else if len(targetBuilds) == 0 {
+			return fmt.Errorf("No successful build for target %s", buildTargetId)
+		}
+
+		build = &targetBuilds[0]
+
+		if context.OutputFormat == OutputFormat_Human {
+			fmt.Printf("Latest build is #%d.\n", build.Number)
+		}
+	}
+
+	if context.Verbose {
+		log.Printf("Found build #%d for target %s, status: %s", build.Number, build.TargetId, build.Status)
+	}
+
+	if build.Status != "success" {
+		return fmt.Errorf("Cannot download build, status is '%s'", build.Status)
+	} else if build.Links.DownloadPrimary == nil {
+		return fmt.Errorf("Missing download link for build")
+	}
+
+	_url, err := url.Parse(build.Links.DownloadPrimary.Href)
+	if err != nil {
+		return err
+	}
+
+	_, err = grabHttpFile(context, _url, outputDir)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func Builds_Start(context *CloudBuildContext, buildTargetId string, clean bool) (*BuildAttempt, error) {
@@ -169,6 +225,26 @@ func Builds_CancelAll(context *CloudBuildContext, buildTargetId string) error {
 	}
 
 	return nil
+}
+
+func Builds_Status(context *CloudBuildContext, buildTargetId string, buildNumber int64) (*Build, error) {
+	client := &http.Client{}
+	req := buildRequest(context, "GET", fmt.Sprintf("buildtargets/%s/builds/%d", buildTargetId, buildNumber), nil)
+
+	var build Build
+	doRequest(context, client, req, &build)
+
+	switch context.OutputFormat {
+	case OutputFormat_None:
+		// do nothing
+	case OutputFormat_Human:
+		outputBuild(build)
+		fmt.Println()
+	case OutputFormat_JSON:
+		dumpJson(build)
+	}
+
+	return &build, nil
 }
 
 func Builds_List(context *CloudBuildContext, buildTargetId string, filterStatus string, filterPlatform string, limit int64) ([]Build, error) {
@@ -385,6 +461,72 @@ func buildRequest(context *CloudBuildContext, method string, path string, body i
 	}
 
 	return req
+}
+
+func grabHttpFile(context *CloudBuildContext, _url *url.URL, outputDir string) (string, error) {
+	if len(outputDir) == 0 {
+		outputDir = "."
+	}
+
+	if context.Verbose {
+		log.Println(_url)
+	}
+
+	if info, err := os.Stat(outputDir); os.IsNotExist(err) || !info.IsDir() {
+		return "", fmt.Errorf("Error: %s is not a directory or does not exist", outputDir)
+	} else if err != nil {
+		return "", fmt.Errorf("Error stat'ing directory: %v", err)
+	}
+
+	filename := path.Base(_url.Path)
+	if _, params, err := mime.ParseMediaType(_url.Query().Get("response-content-disposition")); err == nil {
+		filename = params["filename"]
+	}
+
+	if context.Verbose {
+		log.Printf("Using filename: %s\n", filename)
+	}
+
+	filename = filepath.Join(outputDir, filename)
+	file, err := os.Create(filename)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	if context.OutputFormat == OutputFormat_Human {
+		fmt.Printf("Downloading to: %s\n", filename)
+	}
+
+	resp, err := http.Get(_url.String())
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if context.Verbose {
+		for name, val := range resp.Header {
+			log.Printf("Response header: %s=%s", name, val)
+		}
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("Could not download, got status code: %d", resp.StatusCode)
+	}
+
+	if _, err = io.Copy(file, resp.Body); err != nil {
+		// deferring so it happens after the Close() call.
+		defer func() {
+			os.Remove(filename)
+		}()
+		return "", err
+	}
+
+	if context.OutputFormat == OutputFormat_Human {
+		fmt.Printf("Download complete: %s\n", filename)
+	}
+
+	return filename, nil
 }
 
 func min(a, b int) int {

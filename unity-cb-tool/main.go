@@ -76,6 +76,34 @@ func main() {
 					},
 				},
 				{
+					Name:  "status",
+					Usage: "Retrieve status of a build",
+					Flags: []cli.Flag{
+						cli.StringFlag{
+							Name:  "target-id,t",
+							Usage: "Build target ID",
+							Value: "",
+						},
+						cli.Int64Flag{
+							Name:  "build,b",
+							Usage: "Build number for build target",
+							Value: -1,
+						},
+					},
+					Action: func(c *cli.Context) error {
+						if len(c.String("target-id")) == 0 {
+							log.Fatal("missing target-id")
+						}
+
+						if c.Int64("build") < 0 {
+							log.Fatal("missing build number")
+						}
+
+						_, err := cb.Builds_Status(buildContext(c), c.String("target-id"), c.Int64("build"))
+						return err
+					},
+				},
+				{
 					Name:  "latest",
 					Usage: "List latest builds for every build target",
 					Flags: []cli.Flag{
@@ -151,6 +179,38 @@ func main() {
 							}
 							_, err = cb.Builds_Start(buildContext(c), c.String("target-id"), c.Bool("clean"))
 						}
+						return err
+					},
+				},
+				{
+					Name:  "download",
+					Usage: "Download builds",
+					Flags: []cli.Flag{
+						cli.StringFlag{
+							Name:  "target-id,t",
+							Usage: "Build target ID",
+							Value: "",
+						},
+						cli.Int64Flag{
+							Name:  "build,b",
+							Usage: "Build number for build target",
+							Value: -1,
+						},
+						cli.BoolFlag{
+							Name:  "latest",
+							Usage: "If true, download the latest successful build",
+						},
+						cli.StringFlag{
+							Name:  "output,o",
+							Usage: "If set, the build is written to this directory instead of the current directory",
+						},
+					},
+					Action: func(c *cli.Context) error {
+						if len(c.String("target-id")) == 0 {
+							log.Fatal("missing target-id")
+						}
+
+						err := cb.Builds_Download(buildContext(c), c.String("target-id"), c.Int64("build"), c.Bool("latest"), c.String("output"))
 						return err
 					},
 				},
