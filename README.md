@@ -4,8 +4,7 @@ CLI tool for interacting with Unity Cloud Build.
 This tool is not meant to be an exhaustive wrapper around every single Cloud Build endpoint,
 but instead it is meant to provide a quick way to accomplish common tasks.
 
-See [Releases](https://github.com/justonia/unitycloudbuild/releases) for 64-bit Windows, Mac, and 
-Linux binaries.
+See [Releases](https://github.com/justonia/unitycloudbuild/releases) for 64-bit Windows, Mac, and Linux binaries.
 
 ```
 NAME:
@@ -380,3 +379,98 @@ Writing: Builds/DNTM_Data/level3
 (truncated)
 ```
 
+### `builds wait-for-complete`
+
+Wait for builds to complete. If any build fails or is canceled the exit code will be 1.
+
+```
+NAME:
+   unity-cb-tool builds wait-for-complete - Wait for in-progress build(s) to finish
+
+USAGE:
+   unity-cb-tool builds wait-for-complete [command options] [arguments...]
+
+OPTIONS:
+   --target-id value, -t value  Build target ID
+   --build value, -b value      Build number for build target (default: -1)
+   --all                        If true, wait for all active builds for all enabled targets
+   --abort-on-fail              If true, and --all is specified, exit as soon as one build fails or is canceled.
+```
+
+#### Examples
+
+Wait for a single build to finish.
+```
+unity-cb-tool builds wait-for-complete -t windows-x64 -b 8 
+
+---
+
+Watching: windows-x64 #8
+Build: windows-x64 #8 status changed from sentToBuilder to started
+
+(...time elapses)
+
+Build: windows-x64 #8 status changed from started to success
+Build: windowx-x64 #8 finished.
+Build(s) complete.
+
+```
+
+Wait for the latest build for a target to finish.
+```
+unity-cb-tool builds wait-for-complete -t windows-x64
+
+---
+
+Watching: windows-x64 #9
+Build: windows-x64 #9 status changed from sentToBuilder to started
+
+(...time elapses)
+
+Build: windows-x64 #9 status changed from started to success
+Build: windowx-x64 #9 finished.
+Build(s) complete.
+
+```
+
+Wait for the latest builds in all enabled targets to finish.
+```
+unity-cb-tool builds wait-for-complete --all
+
+---
+
+Watching: windows-x64 #9
+Watching: macos #4
+Build: macos #4 status changed from sentToBuilder to started
+Build: windows-x64 #9 status changed from sentToBuilder to started
+
+(...time elapses)
+
+Build: macos #4 status changed from started to success.
+Build: macos #4 finished.
+
+(...time elapses)
+
+Build: windows-x64 #9 status changed from started to success
+Build: windows-x64 #9 finished.
+Build(s) complete.
+
+```
+
+Wait for the latest builds in all enabled targets to finish, and abort if any one of them fails for any reason.
+```
+unity-cb-tool builds wait-for-complete --all --abort-on-fail
+
+---
+
+Watching: windows-x64 #13
+Watching: macos #9
+Build: macos #9 status changed from sentToBuilder to started
+Build: windows-x64 #13 status changed from sentToBuilder to started
+
+(...time elapses)
+
+Build: macos #9 status changed from started to failure
+Build: macos #9 failed with status: failure
+Aborting early, build: macos #9 failed with status: canceled
+```

@@ -1,6 +1,9 @@
 package unitycloudbuild
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 type BuildTarget struct {
 	Name     string               `json:"name"`
@@ -27,7 +30,7 @@ type Build struct {
 	Number            int           `json:"build"`
 	TargetId          string        `json:"buildTargetId"`
 	TargetName        string        `json:"buildTargetName"`
-	GUID              string        `json:"buildGUID,omitempty"`
+	GUID              string        `json:"buildGUID,omitempty"` // NOTE: On unfinished builds this is empty!
 	Created           time.Time     `json:"created"`
 	Status            string        `json:"buildStatus"`
 	Finished          time.Time     `json:"finished"`
@@ -39,6 +42,10 @@ type Build struct {
 	LastBuiltRevision string        `json:"lastBuiltRevision,omitempty"`
 	Changesets        []interface{} `json:"changeset,omitempty"`
 	UnityVersion      string        `json:"unityVersion"`
+}
+
+func (b *Build) UniqueId() string {
+	return fmt.Sprintf("%s-#%d", b.TargetId, b.Number)
 }
 
 type BuildAttempt struct {

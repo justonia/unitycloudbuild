@@ -58,9 +58,145 @@ var platformShorthand = map[string]string{
 	"":      "",
 }
 
+var RateLimitedError = fmt.Errorf("API rate limit reached")
+var ResourceNotFoundError = fmt.Errorf("Resource not found")
+
 func init() {
 	for _, p := range validPlatforms {
 		platformShorthand[p] = p
+	}
+}
+
+func Builds_WaitForComplete(context *CloudBuildContext, buildTargetId string, buildNumber int64, all bool, abortOnFail bool) error {
+	quietContext := *context
+	if !context.Verbose {
+		quietContext.OutputFormat = OutputFormat_None
+	}
+
+	var builds []*Build
+
+	if all {
+		latestBuilds, err := Builds_Latest(&quietContext, false)
+		if err != nil {
+			return err
+		}
+		for _, build := range latestBuilds {
+			if IsBuildActive(build) {
+				builds = append(builds, build)
+			}
+		}
+	} else if buildNumber > 0 {
+		build, err := Builds_Status(&quietContext, buildTargetId, buildNumber)
+		if err != nil {
+			return err
+		}
+		builds = append(builds, build)
+	} else {
+		latestBuilds, err := Builds_Latest(&quietContext, false)
+		if err != nil {
+			return err
+		} else if build, ok := latestBuilds[buildTargetId]; ok {
+			builds = append(builds, build)
+		}
+	}
+
+	if len(builds) == 0 {
+		return fmt.Errorf("No builds found")
+	}
+
+	finishedBuilds := make(map[string]bool)
+	lastBuildStatus := make(map[string]string)
+	for _, build := range builds {
+		if !IsBuildActive(build) {
+			return fmt.Errorf("Build #%d for target %s is not active", build.Number, build.TargetId)
+		}
+
+		finishedBuilds[build.UniqueId()] = false
+		lastBuildStatus[build.UniqueId()] = build.Status
+
+		if context.OutputFormat == OutputFormat_Human {
+			fmt.Printf("Watching: %s #%d\n", build.TargetId, build.Number)
+		}
+	}
+
+	pollRate := time.Second * 5
+	finishedBuildsCount := 0
+
+Poll:
+	for {
+		select {
+		case <-time.After(pollRate):
+			if context.Verbose {
+				log.Print("Polling...")
+			}
+
+			for i, build := range builds {
+				if finishedBuilds[build.UniqueId()] {
+					continue
+				}
+
+				updatedBuild, err := Builds_Status(&quietContext, build.TargetId, int64(build.Number))
+				if err == RateLimitedError {
+					log.Print("Rate limit hit, backing off")
+					break
+				} else if err != nil {
+					return err
+				}
+
+				builds[i] = updatedBuild
+				build = updatedBuild
+
+				if lastStatus := lastBuildStatus[build.UniqueId()]; lastStatus != build.Status {
+					if context.OutputFormat == OutputFormat_Human {
+						fmt.Printf("Build: %s #%d status changed from %s to %s\n", build.TargetId, build.Number, lastStatus, build.Status)
+					}
+
+					lastBuildStatus[build.UniqueId()] = build.Status
+				}
+
+				if !IsBuildActive(build) {
+					finishedBuilds[build.UniqueId()] = true
+					finishedBuildsCount++
+
+					if context.OutputFormat == OutputFormat_Human {
+						if build.Status != "success" {
+							fmt.Printf("Build: %s #%d failed with status: %s\n", build.TargetId, build.Number, build.Status)
+						} else {
+							fmt.Printf("Build: %s #%d finished.\n", build.TargetId, build.Number)
+						}
+					}
+
+					if abortOnFail && build.Status != "success" {
+						return fmt.Errorf("Aborting early, build: %s #%d failed with status: %s", build.TargetId, build.Number, build.Status)
+					}
+				}
+			}
+
+			if finishedBuildsCount == len(builds) {
+				break Poll
+			}
+		}
+	}
+
+	for _, build := range builds {
+		if build.Status != "success" {
+			return fmt.Errorf("Build: %s #%d failed", build.TargetId, build.Number)
+		}
+	}
+
+	if context.OutputFormat == OutputFormat_Human {
+		fmt.Printf("Build(s) complete.\n")
+	}
+
+	return nil
+}
+
+func IsBuildActive(build *Build) bool {
+	switch build.Status {
+	case "success", "failure", "canceled", "unknown":
+		return false
+	default:
+		return true
 	}
 }
 
@@ -269,9 +405,11 @@ func Builds_Start(context *CloudBuildContext, buildTargetId string, clean bool) 
 		}{clean: clean})
 
 	var entries []BuildAttempt
-	doRequest(context, client, req, &entries)
+	_, err := doRequest(context, client, req, &entries)
 
-	if entries == nil || len(entries) == 0 {
+	if err != nil {
+		return nil, err
+	} else if entries == nil || len(entries) == 0 {
 		return nil, fmt.Errorf("No builds started...")
 	} else if len(entries[0].Error) > 0 {
 		return nil, fmt.Errorf(entries[0].Error)
@@ -299,7 +437,11 @@ func Builds_StartAll(context *CloudBuildContext, clean bool) ([]BuildAttempt, er
 		}{clean: clean})
 
 	var entries []BuildAttempt
-	doRequest(context, client, req, &entries)
+
+	_, err := doRequest(context, client, req, &entries)
+	if err != nil {
+		return nil, err
+	}
 
 	if entries == nil || len(entries) == 0 {
 		return nil, fmt.Errorf("No builds started...")
@@ -329,9 +471,11 @@ func Builds_Cancel(context *CloudBuildContext, buildTargetId string, buildNumber
 	client := &http.Client{}
 	req := buildRequest(context, "DELETE", fmt.Sprintf("buildtargets/%s/builds/%d", buildTargetId, buildNumber), nil)
 
-	resp := doRequest(context, client, req, nil)
-	if resp.StatusCode == 404 {
-		log.Fatalf("Cannot find %s build #%d", buildTargetId, buildNumber)
+	_, err := doRequest(context, client, req, nil)
+	if err == ResourceNotFoundError {
+		return fmt.Errorf("Cannot find %s build #%d", buildTargetId, buildNumber)
+	} else if err != nil {
+		return err
 	}
 
 	return nil
@@ -368,7 +512,10 @@ func Builds_CancelAll(context *CloudBuildContext, buildTargetId string) error {
 		}
 
 		req := buildRequest(context, "DELETE", fmt.Sprintf("buildtargets/%s/builds", target.Id), nil)
-		doRequest(context, client, req, nil)
+		_, err := doRequest(context, client, req, nil)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -379,7 +526,10 @@ func Builds_Status(context *CloudBuildContext, buildTargetId string, buildNumber
 	req := buildRequest(context, "GET", fmt.Sprintf("buildtargets/%s/builds/%d", buildTargetId, buildNumber), nil)
 
 	var build Build
-	doRequest(context, client, req, &build)
+	_, err := doRequest(context, client, req, &build)
+	if err != nil {
+		return nil, err
+	}
 
 	switch context.OutputFormat {
 	case OutputFormat_None:
@@ -414,7 +564,11 @@ func Builds_List(context *CloudBuildContext, buildTargetId string, filterStatus 
 	req.URL.RawQuery = q.Encode()
 
 	var entries []Build
-	doRequest(context, client, req, &entries)
+
+	_, err := doRequest(context, client, req, &entries)
+	if err != nil {
+		return nil, err
+	}
 
 	if limit > 0 {
 		entries = entries[0:min(len(entries), int(limit))]
@@ -447,7 +601,11 @@ func Builds_Latest(context *CloudBuildContext, onlySuccess bool) (map[string]*Bu
 	req.URL.RawQuery = q.Encode()
 
 	var targets []BuildTarget
-	doRequest(context, client, req, &targets)
+
+	_, err := doRequest(context, client, req, &targets)
+	if err != nil {
+		return nil, err
+	}
 
 	for _, target := range targets {
 		if len(target.Builds) > 0 {
@@ -511,7 +669,11 @@ func Targets_List(context *CloudBuildContext) ([]BuildTarget, error) {
 	req.URL.RawQuery = q.Encode()
 
 	var entries []BuildTarget
-	doRequest(context, client, req, &entries)
+
+	_, err := doRequest(context, client, req, &entries)
+	if err != nil {
+		return nil, err
+	}
 
 	switch context.OutputFormat {
 	case OutputFormat_None:
@@ -537,6 +699,7 @@ func Targets_List(context *CloudBuildContext) ([]BuildTarget, error) {
 func outputBuild(build Build) {
 	fmt.Printf("Target: %s, (Build #%d)\n", build.TargetId, build.Number)
 	fmt.Printf("  Created:  %v\n", build.Created)
+	fmt.Printf("  GUID:     %s\n", build.GUID)
 	fmt.Printf("  Status:   %s\n", build.Status)
 	fmt.Printf("  Time:     %v\n", time.Second*time.Duration(build.TotalTimeSeconds))
 	if len(build.LastBuiltRevision) > 0 {
@@ -552,10 +715,10 @@ func dumpJson(i interface{}) {
 	fmt.Println(string(b))
 }
 
-func doRequest(context *CloudBuildContext, client *http.Client, req *http.Request, result interface{}) *http.Response {
+func doRequest(context *CloudBuildContext, client *http.Client, req *http.Request, result interface{}) (*http.Response, error) {
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
 	if context.Verbose {
@@ -566,24 +729,47 @@ func doRequest(context *CloudBuildContext, client *http.Client, req *http.Reques
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
-	if resp.StatusCode == 200 || resp.StatusCode == 202 {
+	switch resp.StatusCode {
+	case 429:
+		return resp, RateLimitedError
+	case 200, 202:
 		if result != nil {
 			if err = json.Unmarshal(body, &result); err != nil {
 				log.Fatal(err)
 			}
 		}
-	} else if resp.StatusCode == 204 || resp.StatusCode == 404 {
+	case 204:
 		// do nothing
-	} else {
+	case 404:
+		return resp, ResourceNotFoundError
+	default:
 		var e errorMessage
 		json.Unmarshal(body, &e)
-		log.Fatalf("[HTTP %d] %s", resp.StatusCode, e.Error)
+		return nil, fmt.Errorf("[HTTP %d] %s", resp.StatusCode, e.Error)
 	}
 
-	return resp
+	/*
+		if resp.StatusCode == 429 {
+		}
+		if resp.StatusCode == 200 || resp.StatusCode == 202 {
+			if result != nil {
+				if err = json.Unmarshal(body, &result); err != nil {
+					log.Fatal(err)
+				}
+			}
+		} else if resp.StatusCode == 204 || resp.StatusCode == 404 {
+			// do nothing
+		} else {
+			var e errorMessage
+			json.Unmarshal(body, &e)
+			log.Fatalf("[HTTP %d] %s", resp.StatusCode, e.Error)
+		}
+	*/
+
+	return resp, nil
 }
 
 func buildRequest(context *CloudBuildContext, method string, path string, body interface{}) *http.Request {

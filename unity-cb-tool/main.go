@@ -221,6 +221,42 @@ func main() {
 						return err
 					},
 				},
+				{
+					Name:  "wait-for-complete",
+					Usage: "Wait for in-progress build(s) to finish",
+					Flags: []cli.Flag{
+						cli.StringFlag{
+							Name:  "target-id,t",
+							Usage: "Build target ID",
+							Value: "",
+						},
+						cli.Int64Flag{
+							Name:  "build,b",
+							Usage: "Build number for build target",
+							Value: -1,
+						},
+						cli.BoolFlag{
+							Name:  "all",
+							Usage: "If true, wait for all active builds for all enabled targets",
+						},
+						cli.BoolFlag{
+							Name:  "abort-on-fail",
+							Usage: "If true, and --all is specified, exit as soon as one build fails or is canceled.",
+						},
+					},
+					Action: func(c *cli.Context) error {
+						if !c.Bool("all") {
+							if len(c.String("target-id")) == 0 {
+								log.Fatal("missing target-id")
+							}
+						}
+
+						err := cb.Builds_WaitForComplete(
+							buildContext(c),
+							c.String("target-id"), c.Int64("build"), c.Bool("all"), c.Bool("abort-on-fail"))
+						return err
+					},
+				},
 			},
 		},
 		{
