@@ -68,7 +68,7 @@ func init() {
 	}
 }
 
-func fatalIfError(err error) {
+func FatalIfError(err error) {
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -173,10 +173,10 @@ func Git_Head(context *CloudBuildContext, repoPath string) (*GitCommit, error) {
 	}
 
 	head, err := repo.Head()
-	fatalIfError(err)
+	FatalIfError(err)
 
 	commit, err := repo.CommitObject(head.Hash())
-	fatalIfError(err)
+	FatalIfError(err)
 
 	info := &GitCommit{
 		Revision: commit.Hash.String(),

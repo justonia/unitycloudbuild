@@ -2,14 +2,17 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
+	"path"
 
 	cb "github.com/justonia/unitycloudbuild"
 	"github.com/urfave/cli"
+	yaml "gopkg.in/yaml.v2"
 )
 
-const Version string = "0.2.2"
+const Version string = "0.2.3"
 
 func main() {
 	var apiKey string
@@ -348,26 +351,109 @@ func buildContext(c *cli.Context) *cb.CloudBuildContext {
 		log.Fatal("Missing api-key")
 	}
 
-	orgId := c.GlobalString("org-id")
-	if len(orgId) == 0 {
-		log.Fatal("Missing org-id")
-	}
-
-	projectId := c.GlobalString("project-id")
-	if len(projectId) == 0 {
-		log.Fatal("Missing project-id")
-	}
-
 	outputFormat := cb.OutputFormat_Human
 	if c.GlobalBool("json") {
 		outputFormat = cb.OutputFormat_JSON
 	}
 
-	return &cb.CloudBuildContext{
-		OrgId:        orgId,
-		ProjectId:    projectId,
+	context := &cb.CloudBuildContext{
+		OrgId:        c.GlobalString("org-id"),
+		ProjectId:    c.GlobalString("project-id"),
 		ApiKey:       apiKey,
 		OutputFormat: outputFormat,
 		Verbose:      c.GlobalBool("verbose"),
 	}
+
+	tryFillFromProjectSettings(context)
+
+	if len(context.OrgId) == 0 {
+		log.Fatal("Missing org-id")
+	}
+
+	if len(context.ProjectId) == 0 {
+		log.Fatal("Missing project-id")
+	}
+
+	return context
+}
+
+func tryFillFromProjectSettings(context *cb.CloudBuildContext) {
+	baseName := path.Join("ProjectSettings", "ProjectSettings.asset")
+	filename := tryFindFile(context, baseName)
+
+	if filename == "" {
+		return
+	}
+
+	d, err := ioutil.ReadFile(filename)
+	if err != nil {
+		if context.Verbose {
+			log.Print(err)
+		}
+		return
+	}
+
+	var settings projectSettings
+	err = yaml.Unmarshal(d, &settings)
+	if err != nil {
+		if context.Verbose {
+			log.Print(err)
+		}
+		return
+	}
+
+	if context.Verbose {
+		log.Printf("Discovered Unity settings: %s", filename)
+	}
+
+	if context.OrgId == "" {
+		context.OrgId = settings.PlayerSettings.OrgId
+	}
+	if context.ProjectId == "" {
+		context.ProjectId = settings.PlayerSettings.ProjectId
+	}
+}
+
+func tryFindFile(context *cb.CloudBuildContext, baseFilename string) string {
+	cwd, err := os.Getwd()
+	if err != nil {
+		if context.Verbose {
+			log.Print(err)
+		}
+		return ""
+	}
+
+	filename := path.Join(cwd, baseFilename)
+	for {
+		if info, err := os.Stat(path.Join(cwd, baseFilename)); err != nil && !os.IsNotExist(err) {
+			if context.Verbose {
+				log.Print(err)
+			}
+			return ""
+		} else if os.IsNotExist(err) {
+			newCwd := path.Dir(cwd)
+			if newCwd == cwd {
+				return ""
+			}
+			cwd = newCwd
+			filename = path.Join(cwd, baseFilename)
+			continue
+		} else if info.IsDir() {
+			if context.Verbose {
+				log.Print("Is dir")
+			}
+			return ""
+		}
+
+		break
+	}
+
+	return filename
+}
+
+type projectSettings struct {
+	PlayerSettings struct {
+		OrgId     string `yaml:"organizationId"`
+		ProjectId string `yaml:"cloudProjectId"`
+	} `yaml:"PlayerSettings"`
 }

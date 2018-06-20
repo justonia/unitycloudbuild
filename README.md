@@ -14,7 +14,7 @@ USAGE:
    unity-cb-tool [global options] command [command options] [arguments...]
 
 VERSION:
-   0.2.2
+   0.2.3
 
 COMMANDS:
      builds   
@@ -42,7 +42,11 @@ targets in Cloud Build. The easiest way to find your target IDs is to run `unity
 This tool requires you to specify your API key, organization ID, and project ID for any of
 the commands to work. 
 
-The easiest way to provide these data are to specify them as environment variables:
+If the organization ID and project ID are not in the environment variables or not provided
+as an argument, the tool will attempt to locate your ProjectSettings.asset file and pull 
+those values from it.
+
+Another way to provide these config values are to specify them as environment variables:
 * API Key: `UNITY_API_KEY`
 * Org ID: `UNITY_ORG_ID`
 * Project ID: `UNITY_PROJECT_ID`
@@ -62,8 +66,6 @@ export UNITY_ORG_ID=my-org-id
 
 unity-cb-tool --project-id MYPROJECTID builds latest
 ```
-
-I will add support for a config file at some indeterminate point in the future. See [Issue #2](https://github.com/justonia/unitycloudbuild/issues/2).
 
 ## Commands
 
