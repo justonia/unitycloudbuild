@@ -14,7 +14,7 @@ USAGE:
    unity-cb-tool [global options] command [command options] [arguments...]
 
 VERSION:
-   0.2.1
+   0.2.2
 
 COMMANDS:
      builds   
@@ -473,4 +473,106 @@ Build: windows-x64 #13 status changed from sentToBuilder to started
 Build: macos #9 status changed from started to failure
 Build: macos #9 failed with status: failure
 Aborting early, build: macos #9 failed with status: canceled
+```
+
+### `git head`
+
+Prints info about the current commit, if a Git repo is found in the current directory or any parent directory.
+
+```
+NAME:
+   unity-cb-tool git head - Output current revision and commit message for HEAD
+
+USAGE:
+   unity-cb-tool git head [command options] [arguments...]
+
+OPTIONS:
+   --repo-path value, -p value  If set, search for Git repo there instead of current working directory
+```
+
+#### Example
+
+```
+unity-cb-tool git head
+
+---
+
+Revision: d1396dfaddbaf0b9294d3b7509bd6ae8fc2a18fd
+Message:  Committed some stuff.
+
+```
+
+### `git build-matches-head`
+
+Checks if builds match the current HEAD revision. Exit code 1 is returned if any build does not match.
+
+```
+NAME:
+   unity-cb-tool git build-matches-head - Determine if the build(s) match the current HEAD revision
+
+USAGE:
+   unity-cb-tool git build-matches-head [command options] [arguments...]
+
+OPTIONS:
+   --target-id value, -t value  Build target ID
+   --build value, -b value      Build number for build target (default: -1)
+   --all                        If true, check if all enabled targets match
+   --repo-path value, -p value  If set, search for Git repo there instead of current working directory
+```
+
+#### Examples
+
+Check if a specific build matches.
+```
+unity-cb-tool git build-matches-head -t windows-x64 -b 1
+
+---
+
+HEAD: 82eee0b975ede2c4b71b780fb77ca2987b830ec0
+Build windows-x64 #1 matches HEAD.
+```
+
+Check if a specific build matches (it doesn't).
+```
+unity-cb-tool git build-matches-head -t windows-x64 -b 4
+
+---
+
+HEAD: 82eee0b975ede2c4b71b780fb77ca2987b830ec0
+Build windows-x64 #4 is revision 324dfs3f, head is 82eee0b9
+Build(s) do not match.
+```
+
+Check if latest build for a target matches.
+```
+unity-cb-tool git build-matches-head -t windows-x64
+
+---
+
+HEAD: 82eee0b975ede2c4b71b780fb77ca2987b830ec0
+Build windows-x64 #19 matches HEAD.
+```
+
+Check if all latest builds for all enabled targets match.
+```
+unity-cb-tool git build-matches-head --all
+
+---
+
+HEAD: 82eee0b975ede2c4b71b780fb77ca2987b830ec0
+Build windows-x64 #13 matches HEAD.
+Build macos #10 matches HEAD.
+```
+
+Check if all latest builds for all enabled targets match (one target missing build).
+```
+unity-cb-tool git build-matches-head --all
+
+---
+
+HEAD: 82eee0b975ede2c4b71b780fb77ca2987b830ec0
+Target default-linux-desktop-universal does not have a successful build.
+Build windows-x64 #13 matches HEAD.
+Build macos #10 matches HEAD.
+Build(s) do not match.
 ```

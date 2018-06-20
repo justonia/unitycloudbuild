@@ -84,3 +84,8 @@ type Artifact struct {
 	Key   string `json:"key"`
 	Name  string `json:"name"`
 }
+
+type GitCommit struct {
+	Revision string `json:"revision"`
+	Message  string `json:"message,omitempty"`
+}

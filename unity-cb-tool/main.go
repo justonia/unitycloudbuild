@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 
@@ -8,7 +9,7 @@ import (
 	"github.com/urfave/cli"
 )
 
-const Version string = "0.2.1"
+const Version string = "0.2.2"
 
 func main() {
 	var apiKey string
@@ -112,9 +113,13 @@ func main() {
 							Name:  "success",
 							Usage: "If true, only show latest successful build",
 						},
+						cli.BoolFlag{
+							Name:  "only-enabled",
+							Usage: "If true, only show builds from enabled targets",
+						},
 					},
 					Action: func(c *cli.Context) error {
-						_, err := cb.Builds_Latest(buildContext(c), c.Bool("success"))
+						_, err := cb.Builds_Latest(buildContext(c), c.Bool("success"), c.Bool("only-enabled"))
 						return err
 					},
 				},
@@ -269,6 +274,63 @@ func main() {
 					Action: func(c *cli.Context) error {
 						_, err := cb.Targets_List(buildContext(c))
 						return err
+					},
+				},
+			},
+		},
+		{
+			Name: "git",
+			Subcommands: []cli.Command{
+				{
+					Name:  "head",
+					Usage: "Output current revision and commit message for HEAD",
+					Flags: []cli.Flag{
+						cli.StringFlag{
+							Name:  "repo-path,p",
+							Usage: "If set, search for Git repo there instead of current working directory",
+						},
+					},
+					Action: func(c *cli.Context) error {
+						_, err := cb.Git_Head(buildContext(c), c.String("repo-path"))
+						return err
+					},
+				},
+				{
+					Name:  "build-matches-head",
+					Usage: "Determine if the build(s) match the current HEAD revision",
+					Flags: []cli.Flag{
+						cli.StringFlag{
+							Name:  "target-id,t",
+							Usage: "Build target ID",
+							Value: "",
+						},
+						cli.Int64Flag{
+							Name:  "build,b",
+							Usage: "Build number for build target",
+							Value: -1,
+						},
+						cli.BoolFlag{
+							Name:  "all",
+							Usage: "If true, check if all enabled targets match",
+						},
+						cli.StringFlag{
+							Name:  "repo-path,p",
+							Usage: "If set, search for Git repo there instead of current working directory",
+						},
+					},
+					Action: func(c *cli.Context) error {
+						if !c.Bool("all") && len(c.String("target-id")) == 0 {
+							log.Fatal("missing target-id")
+						}
+
+						matches, err := cb.Git_BuildsMatchHead(buildContext(c), c.String("repo-path"), c.String("target-id"), c.Int64("build"), c.Bool("all"))
+						if err != nil {
+							return err
+						}
+						if !matches {
+							return fmt.Errorf("Build(s) do not match.")
+						}
+						return nil
 					},
 				},
 			},

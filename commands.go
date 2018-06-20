@@ -17,7 +17,8 @@ import (
 	"sort"
 	"strings"
 	"time"
-	//"github.com/cavaliercoder/grab"
+
+	"gopkg.in/src-d/go-git.v4"
 )
 
 type OutputFormat int
@@ -67,6 +68,134 @@ func init() {
 	}
 }
 
+func fatalIfError(err error) {
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func Git_BuildsMatchHead(context *CloudBuildContext, repoPath string, buildTargetId string, buildNumber int64, all bool) (bool, error) {
+	quietContext := *context
+	if !context.Verbose {
+		quietContext.OutputFormat = OutputFormat_None
+	}
+
+	commit, err := Git_Head(&quietContext, repoPath)
+	if err != nil {
+		return false, err
+	}
+
+	if context.OutputFormat == OutputFormat_Human {
+		fmt.Printf("HEAD: %s\n", commit.Revision)
+	}
+
+	var builds []*Build
+	var missingBuilds []string
+
+	if all {
+		latestBuilds, err := Builds_Latest(&quietContext, true, true)
+		if err != nil {
+			return false, err
+		}
+		for targetName, build := range latestBuilds {
+			if build == nil {
+				missingBuilds = append(missingBuilds, targetName)
+				continue
+			}
+			builds = append(builds, build)
+		}
+	} else if buildNumber > 0 {
+		build, err := Builds_Status(&quietContext, buildTargetId, buildNumber)
+		if err != nil {
+			return false, err
+		}
+		builds = append(builds, build)
+	} else {
+		latestBuilds, err := Builds_Latest(&quietContext, true, true)
+		if err != nil {
+			return false, err
+		} else if build, ok := latestBuilds[buildTargetId]; ok {
+			if build == nil {
+				missingBuilds = append(missingBuilds, buildTargetId)
+			} else {
+				builds = append(builds, build)
+			}
+		}
+	}
+
+	allMatch := true
+
+	for _, targetName := range missingBuilds {
+		if context.OutputFormat == OutputFormat_Human {
+			fmt.Printf("Target %s does not have a successful build.\n", targetName)
+		}
+
+		allMatch = false
+	}
+
+	for _, build := range builds {
+		if build.Status != "success" {
+			if context.OutputFormat == OutputFormat_Human {
+				fmt.Printf("Build %s #%d is not a successful build\n", build.TargetId, build.Number)
+			}
+			allMatch = false
+			continue
+		}
+
+		if build.LastBuiltRevision != commit.Revision {
+			if context.OutputFormat == OutputFormat_Human {
+				fmt.Printf("Build %s #%d is revision %s, head is %s\n", build.TargetId, build.Number, build.LastBuiltRevision[:8], commit.Revision[:8])
+			}
+
+			allMatch = false
+			continue
+		}
+
+		if context.OutputFormat == OutputFormat_Human {
+			fmt.Printf("Build %s #%d matches HEAD.\n", build.TargetId, build.Number)
+		}
+	}
+
+	return allMatch, nil
+}
+
+func Git_Head(context *CloudBuildContext, repoPath string) (*GitCommit, error) {
+	if repoPath == "" {
+		repoPath = "."
+	}
+
+	repo, err := git.PlainOpenWithOptions(repoPath, &git.PlainOpenOptions{
+		DetectDotGit: true,
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	head, err := repo.Head()
+	fatalIfError(err)
+
+	commit, err := repo.CommitObject(head.Hash())
+	fatalIfError(err)
+
+	info := &GitCommit{
+		Revision: commit.Hash.String(),
+		Message:  commit.Message,
+	}
+
+	switch context.OutputFormat {
+	case OutputFormat_None:
+		// do nothing
+	case OutputFormat_Human:
+		fmt.Printf("Revision: %s\n", info.Revision)
+		fmt.Printf("Message:  %s\n", info.Message)
+	case OutputFormat_JSON:
+		dumpJson(info)
+	}
+
+	return info, nil
+}
+
 func Builds_WaitForComplete(context *CloudBuildContext, buildTargetId string, buildNumber int64, all bool, abortOnFail bool) error {
 	quietContext := *context
 	if !context.Verbose {
@@ -76,12 +205,12 @@ func Builds_WaitForComplete(context *CloudBuildContext, buildTargetId string, bu
 	var builds []*Build
 
 	if all {
-		latestBuilds, err := Builds_Latest(&quietContext, false)
+		latestBuilds, err := Builds_Latest(&quietContext, false, true)
 		if err != nil {
 			return err
 		}
 		for _, build := range latestBuilds {
-			if IsBuildActive(build) {
+			if build != nil && IsBuildActive(build) {
 				builds = append(builds, build)
 			}
 		}
@@ -92,10 +221,10 @@ func Builds_WaitForComplete(context *CloudBuildContext, buildTargetId string, bu
 		}
 		builds = append(builds, build)
 	} else {
-		latestBuilds, err := Builds_Latest(&quietContext, false)
+		latestBuilds, err := Builds_Latest(&quietContext, false, true)
 		if err != nil {
 			return err
-		} else if build, ok := latestBuilds[buildTargetId]; ok {
+		} else if build, ok := latestBuilds[buildTargetId]; ok && build != nil {
 			builds = append(builds, build)
 		}
 	}
@@ -589,7 +718,7 @@ func Builds_List(context *CloudBuildContext, buildTargetId string, filterStatus 
 	return entries, nil
 }
 
-func Builds_Latest(context *CloudBuildContext, onlySuccess bool) (map[string]*Build, error) {
+func Builds_Latest(context *CloudBuildContext, onlySuccess bool, onlyEnabled bool) (map[string]*Build, error) {
 	client := &http.Client{}
 	builds := make(map[string]*Build)
 
@@ -608,6 +737,10 @@ func Builds_Latest(context *CloudBuildContext, onlySuccess bool) (map[string]*Bu
 	}
 
 	for _, target := range targets {
+		if onlyEnabled && !target.Enabled {
+			continue
+		}
+
 		if len(target.Builds) > 0 {
 			builds[target.Id] = &target.Builds[0]
 		} else {
@@ -620,9 +753,13 @@ func Builds_Latest(context *CloudBuildContext, onlySuccess bool) (map[string]*Bu
 		quietContext.OutputFormat = OutputFormat_None
 
 		for _, target := range targets {
+			if onlyEnabled && !target.Enabled {
+				continue
+			}
+
 			targetBuilds, err := Builds_List(&quietContext, target.Id, "", "", 1)
 			if err != nil {
-				log.Fatal(err)
+				return nil, err
 			}
 			if len(targetBuilds) > 0 {
 				builds[target.Id] = &targetBuilds[0]
