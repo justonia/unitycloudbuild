@@ -67,6 +67,40 @@ export UNITY_ORG_ID=my-org-id
 unity-cb-tool --project-id MYPROJECTID builds latest
 ```
 
+## Scripting Example
+
+Here's a Bash script I use to kick off all platform builds and then download content into
+the directories used by the Steam upload tool.
+
+```
+#!/bin/bash
+
+# Error out if any command fails
+set -e -x
+
+# Clean out existing files in Steam depot content directories
+rm -rf Steam/windows_content/*
+touch Steam/windows_content/.placeholder
+rm -rf Steam/mac_content/*
+touch Steam/mac_content/.placeholder
+
+# Stop any existing builds
+./unity-cb-tool builds cancel --all
+
+# Start builds for all enabled targets
+./unity-cb-tool builds start --all
+
+# Wait for all builds to complete. If one fails, the script will abort.
+./unity-cb-tool builds wait-for-complete --all --abort-on-fail
+
+# Sanity check, make sure the new builds match the local Git commit.
+./unity-cb-tool git build-matches-head --all
+
+# Download and unzip the builds into the Steam depot content directories
+./unity-cb-tool builds download -t windows-x64 --latest --unzip -o Steam/windows_content
+./unity-cb-tool builds download -t macos --latest --unzip -o Steam/mac_content
+```
+
 ## Commands
 
 ### `targets list`
